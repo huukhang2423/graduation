@@ -532,7 +532,7 @@
         </label>
         <p class="rsvp-error" id="rErr" role="alert"></p>
         <div class="actions">
-          <button type="submit" class="btn">Gửi xác nhận qua Zalo</button>
+          <button type="submit" class="btn" id="rSubmit">Gửi xác nhận qua Zalo</button>
         </div>
         <p class="rsvp-note" id="rNote" role="status"></p>
         <textarea class="rsvp-copy" id="rCopy" rows="4" readonly hidden aria-label="Nội dung xác nhận"></textarea>
@@ -913,12 +913,48 @@
     return lines.join("\n");
   }
 
-  // Zalo không hỗ trợ điền sẵn tin nhắn: sao chép nội dung, rồi hiện nút mở khung chat Zalo
-  const rCopy = document.getElementById("rCopy");
+  // Địa chỉ ứng dụng web Apps Script gắn với Google Sheet của Khang.
+  // Để trống thì quay về cách gửi qua Zalo.
+  const SHEET_URL = "https://script.google.com/macros/s/AKfycbzzD8Wqo-bXF9yBKQvBEVjSSkNrfZDUasP4vRP7B9BLVYAadi8aSSANLiaEJqCetmieBA/exec";
+  const rSubmit = document.getElementById("rSubmit");
+  if (SHEET_URL) rSubmit.textContent = "Gửi xác nhận";
+
   rsvp.addEventListener("submit", e => {
     e.preventDefault();
     const text = rsvpText();
     if (!text) return;
+    if (SHEET_URL) sendToSheet(text);
+    else sendViaZalo(text);
+  });
+
+  // Gửi thẳng một dòng vào Google Sheet; lỗi mạng thì chuyển sang Zalo
+  async function sendToSheet(text) {
+    rSubmit.disabled = true;
+    rSubmit.textContent = "Đang gửi…";
+    rNote.textContent = "";
+    const body = new URLSearchParams({
+      ten: rName.value.trim(),
+      thamdu: attending() ? "Có" : "Không",
+      songuoi: attending() ? document.getElementById("rCount").value : "0",
+      loinhan: document.getElementById("rMsg").value.trim(),
+    });
+    try {
+      // no-cors: Apps Script không trả header CORS, nên không đọc được phản hồi nhưng dòng vẫn được ghi
+      await fetch(SHEET_URL, { method: "POST", mode: "no-cors", body });
+      rNote.textContent = attending()
+        ? "Đã gửi! Cảm ơn bạn, hẹn gặp bạn ở buổi lễ nhé 💚"
+        : "Đã gửi! Cảm ơn bạn đã báo cho Khang 💚";
+      rSubmit.textContent = "Đã gửi ✓";
+    } catch {
+      rSubmit.disabled = false;
+      rSubmit.textContent = "Gửi xác nhận";
+      sendViaZalo(text);
+    }
+  }
+
+  // Zalo không hỗ trợ điền sẵn tin nhắn: sao chép nội dung, rồi hiện nút mở khung chat Zalo
+  const rCopy = document.getElementById("rCopy");
+  function sendViaZalo(text) {
     rCopy.value = text;
     document.getElementById("zaloRow").hidden = false;
     const copied = () => {
@@ -932,7 +968,7 @@
     };
     if (navigator.clipboard) navigator.clipboard.writeText(text).then(copied, manual);
     else manual();
-  });
+  }
 
   // ---- Lá rơi ----
   const leavesEl = document.getElementById("leaves");
